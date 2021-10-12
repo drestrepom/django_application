@@ -1,0 +1,8 @@
+{
+  formatPython = {
+    enable = true;
+    targets = [
+      "/"
+    ];
+  };
+}
