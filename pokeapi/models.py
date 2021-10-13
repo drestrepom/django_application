@@ -15,10 +15,21 @@ class Evolution(models.Model):
 
 
 class Specie(models.Model):
-    id: models.CharField(primary_key=True, max_length=4)
+    id = models.CharField(primary_key=True, max_length=4)
     evolution_chain = models.ForeignKey(Evolution, on_delete=models.CASCADE)
-    evolves_from = models.CharField(null=True, max_length=4)
-    evolves_to = models.CharField(null=True, max_length=4)
+    evolves_from = models.ForeignKey(
+        "self", related_name="from_specie", on_delete=models.CASCADE, null=True
+    )
+    evolves_to = models.ForeignKey(
+        "self", related_name="to_specie", on_delete=models.CASCADE, null=True
+    )
+    name = models.CharField(max_length=20)
+    default_pokemon = models.ForeignKey(
+        "pokeapi.Pokemon",
+        null=True,
+        on_delete=models.CASCADE,
+        related_name="default_pokemon",
+    )
 
 
 class Pokemon(models.Model):
