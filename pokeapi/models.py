@@ -38,3 +38,12 @@ class Pokemon(models.Model):
     height = models.FloatField()
     weight = models.FloatField()
     specie = models.ForeignKey(Specie, on_delete=models.CASCADE)
+    raw_data = models.JSONField(null=True)
+
+
+class Stat(models.Model):
+    stat_id = models.CharField(primary_key=True, max_length=4)
+    base_stat = models.IntegerField()
+    effort = models.IntegerField()
+    name = models.CharField(max_length=20)
+    pokemon = models.ForeignKey(Pokemon, on_delete=models.CASCADE)
