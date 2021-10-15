@@ -12,6 +12,7 @@ from pokeapi.utils import (
 )
 from pokeapi.utils.objects import (
     create_pokemon,
+    POKEMONS,
 )
 import requests
 from typing import (
@@ -64,6 +65,7 @@ async def get_all_pokemons_data() -> List[Dict[str, Any]]:
 def main(apps, schema_editor) -> None:
     logger.info("getting all the pokemons")
     all_pokemons = asyncio.run(get_all_pokemons_data())
+    POKEMONS.set({pokemon["id"]: pokemon for pokemon in all_pokemons})
     logger.info("%s pokemons will be created", len(all_pokemons))
     with ThreadPoolExecutor(max_workers=32) as executor:
         executor.map(

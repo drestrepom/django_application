@@ -141,7 +141,6 @@ def get_pokemon(pokemon_id: str) -> Optional[Dict[str, Any]]:
     if _pokemon := POKEMONS.get().get(pokemon_id):
         return _pokemon
 
-    LOGGER.info("get pokemon %s by API", pokemon_id)
     url = f"https://pokeapi.co/api/v2/pokemon/{pokemon_id}/"
     response = requests.get(url)
     if response.ok:
