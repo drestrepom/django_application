@@ -1,13 +1,16 @@
 from contextlib import (
     suppress,
 )
-from django.core.exceptions import (
-    ObjectDoesNotExist,
+from contextvars import (
+    ContextVar,
 )
 from django.core.management.base import (
     CommandError,
 )
 import logging
+from more_itertools.recipes import (
+    pairwise,
+)
 from pokeapi.models import (
     Evolution,
     Pokemon,
@@ -21,10 +24,19 @@ import requests
 from typing import (
     Any,
     Dict,
+    Iterator,
+    List,
     Optional,
 )
 
 LOGGER = logging.getLogger("pokeapi")
+POKEMONS = ContextVar("POKEMONS", default={})
+
+
+def extract_evolution_chain(evolves_to: List[Dict[str, Any]]) -> Iterator[str]:
+    for evolve in evolves_to:
+        yield extract_id_from_uri(evolve["species"]["url"])
+        yield from extract_evolution_chain(evolve["evolves_to"])
 
 
 def get_specie(_id: str) -> Optional[Dict[str, Any]]:
@@ -58,13 +70,30 @@ def create_evolution(evolution_chain_id: str) -> Optional[Evolution]:
     return None
 
 
+def create_evolution_chain(evolution_chain_id: str) -> None:
+    with suppress(Evolution.DoesNotExist):
+        evolution = Evolution.objects.get(id=evolution_chain_id)
+        LOGGER.info("The evolution chain %s already exits", evolution.name)
+        return evolution
+
+    if _evolution := get_evolution(evolution_chain_id):
+        evolution = create_evolution(evolution_chain_id)
+        evolution_chain = [evolution.specie_id]
+        evolution_chain.extend(
+            list(extract_evolution_chain(_evolution["chain"]["evolves_to"]))
+        )
+        for _from, _to in pairwise(evolution_chain):
+            create_specie(_from)
+            create_specie(_to)
+            create_specie(_from, _to)
+
+
 def create_specie(
     specie_id: str,
     evolves_to_id: Optional[str] = None,
 ) -> Specie:
-    with suppress(ObjectDoesNotExist):
+    with suppress(Specie.DoesNotExist):
         specie = Specie.objects.get(id=specie_id)
-        LOGGER.info("The specie %s already exits", specie.name)
         return specie
 
     evolves_to = None
@@ -82,13 +111,13 @@ def create_specie(
         evolves_from_id = extract_id_from_uri(_from["url"])
         try:
             evolves_from = Specie.objects.get(id=evolves_from_id)
-        except ObjectDoesNotExist:
+        except Specie.DoesNotExist:
             evolves_from = create_specie(evolves_from_id)
 
     try:
         evolution_chain = Evolution.objects.get(id=evolution_chain_id)
-    except ObjectDoesNotExist:
-        evolution_chain = create_evolution(evolution_chain_id)
+    except Evolution.DoesNotExist:
+        evolution_chain = create_evolution_chain(evolution_chain_id)
     specie = Specie(
         id=specie_id,
         evolution_chain=evolution_chain,
@@ -97,21 +126,22 @@ def create_specie(
         name=_specie["name"],
     )
     specie.save()
-    LOGGER.info("the %s specie has been created", _specie["name"])
     for _pokemon in _specie["varieties"]:
         pokemon_id = extract_id_from_uri(_pokemon["pokemon"]["url"])
         try:
             pokemon = Pokemon.objects.get(id=pokemon_id)
-        except ObjectDoesNotExist:
-            pokemon = create_pokemon(pokemon_id, specie)
-
-        if _pokemon["is_default"]:
+        except Pokemon.DoesNotExist:
+            pokemon = create_pokemon(pokemon_id, specie=specie)
             specie.default_pokemon = pokemon
             specie.save()
     return specie
 
 
 def get_pokemon(pokemon_id: str) -> Optional[Dict[str, Any]]:
+    if _pokemon := POKEMONS.get().get(pokemon_id):
+        return _pokemon
+
+    LOGGER.info("get pokemon %s by API", pokemon_id)
     url = f"https://pokeapi.co/api/v2/pokemon/{pokemon_id}/"
     response = requests.get(url)
     if response.ok:
@@ -125,20 +155,20 @@ def create_pokemon(
     raw_data: Optional[Dict[str, Any]] = None,
     specie: Optional[Specie] = None,
 ) -> Optional[Pokemon]:
-    with suppress(ObjectDoesNotExist):
+    with suppress(Pokemon.DoesNotExist):
         pokemon = Pokemon.objects.get(id=pokemon_id)
         LOGGER.info("The pokemon %s already exits", pokemon.name)
         return pokemon
-
     _pokemon = raw_data or get_pokemon(pokemon_id)
-    if not specie:
-        specie_id = extract_id_from_uri(_pokemon["species"]["url"])
+    if not specie and (
+        specie_id := extract_id_from_uri(_pokemon["species"]["url"])
+    ):
         try:
             specie = Specie.objects.get(id=specie_id)
-        except ObjectDoesNotExist:
+        except Specie.DoesNotExist:
             specie = create_specie(specie_id)
 
-    LOGGER.debug("Creating the pokemon %s", _pokemon["name"])
+    # LOGGER.debug("Creating the pokemon %s", _pokemon["name"])
     pokemon = Pokemon(
         name=_pokemon["name"],
         id=_pokemon["id"],
