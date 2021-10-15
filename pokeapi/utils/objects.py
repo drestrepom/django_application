@@ -127,11 +127,12 @@ def create_specie(
     )
     specie.save()
     for _pokemon in _specie["varieties"]:
-        pokemon_id = extract_id_from_uri(_pokemon["pokemon"]["url"])
-        try:
-            pokemon = Pokemon.objects.get(id=pokemon_id)
-        except Pokemon.DoesNotExist:
-            pokemon = create_pokemon(pokemon_id, specie=specie)
+        if _pokemon.get("is_default"):
+            pokemon_id = extract_id_from_uri(_pokemon["pokemon"]["url"])
+            try:
+                pokemon = Pokemon.objects.get(id=pokemon_id)
+            except Pokemon.DoesNotExist:
+                pokemon = create_pokemon(pokemon_id, specie=specie)
             specie.default_pokemon = pokemon
             specie.save()
     return specie
